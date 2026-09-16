@@ -1,10 +1,15 @@
 # 光伏储能微电网多阶段经济调度研究
 
+**版本：** [v0.1.0](VERSION)
 **英文标题：** *Multi-stage Economic Dispatch for a PV–Storage Microgrid under Forecast and Price Uncertainty*
 
 我独立完成了这个能源调度研究项目，探索如何在光伏出力、负荷和电价信息逐步更新时制定购电与储能策略。研究场景基于 2026 年全国大学生数学建模竞赛 C 题“微网与外部电网电力调控策略”。本项目未作为比赛作品提交，与竞赛组委会无关联。我在仓库中公开建模思路、模型选择、最终代码和经过核对的汇总结果；原题附件和完整数据不在仓库中。
 
-## 研究路线与模型选择
+## 项目解决什么问题
+
+微电网需要在每个 10 分钟时段满足负荷，同时安排光伏、储能和外部电网购电。日前制定计划时，未来光伏与负荷的真实值未知；日内有新预测时，是否修改计划还取决于调整费用；动态电价进一步改变购电与储能时机。我用五个逐步扩展的模型，对照不同信息条件下的运行成本、紧急购电和期末储能状态。
+
+## 主要功能
 
 | 阶段 | 决策问题 | 采用方法 | 后续改进的原因 |
 | --- | --- | --- | --- |
@@ -15,6 +20,26 @@
 | Q4-3 | 动态电价下如何利用新信息 | 联合预测、随机规划与滚动调整 | 最终研究版本，需用对照实验评价得失 |
 
 日前计划主要使用 SciPy 的 `linprog` / HiGHS；Q3 和 Q4-3 的日内调整还使用 `scipy.optimize.milp`。预测和场景生成代码见各题 `src/`。标题中的“多阶段”指日前计划到日内更新的决策过程。模型选择、关键假设和限制见 [研究总结](docs/研究总结.md)。
+
+## 项目目录
+
+```text
+.
+├── README.md
+├── VERSION
+├── LICENSE
+├── COMMERCIAL-LICENSING.md
+├── docs/
+│   └── 研究总结.md
+└── code/
+    ├── Q1_确定性优化/
+    ├── Q2_随机规划/
+    ├── Q3_滚动优化/
+    ├── Q4_2动态电价/
+    └── Q4_3动态滚动优化/
+```
+
+每个 `code/` 阶段目录都有自己的主程序、`src/` 模块和 `requirements.txt`。运行时该目录的 `data/raw/` 存放输入，`outputs*` 存放生成结果；这些数据与输出目录由 `.gitignore` 排除。五个阶段分别运行，当前版本不提供统一的一键入口。
 
 ## 汇总结果
 
@@ -30,7 +55,41 @@
 
 Q3、Q4-3 的成本包含调整后计划购电、计划偏差费用和 5 倍电价的紧急购电；计划减少部分按原价的 50% 收取违约金，计划增加部分的合计支付相当于当前电价的 1.5 倍。Q4-3 的紧急购电量高于 Q4-2，故不能把最后一步概括为“全面降低紧急购电”。这些数字受电池效率、终端 SOC 结算和场景设定影响，不是普适的性能保证。
 
-## 代码与运行
+## 安装方法
+
+需要 Python 3.12 和 Git。克隆仓库后，在仓库根目录创建虚拟环境并安装依赖。Q4-3 的 `requirements.txt` 包含五个阶段共同需要的包；也可以只安装准备运行的阶段目录中的依赖。以下以 Windows PowerShell 为例，无需激活虚拟环境：
+
+```powershell
+git clone https://github.com/lishen3/pv-storage-microgrid-multistage-dispatch.git
+cd pv-storage-microgrid-multistage-dispatch
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r .\code\Q4_3动态滚动优化\requirements.txt
+```
+
+Linux/macOS 可将最后一步的 Python 路径改为 `./.venv/bin/python`。安装依赖不会自动下载题目附件。
+
+## 使用方法
+
+每个阶段从**自己的** `code/<阶段>/data/raw/` 读取输入，不能只把附件放在仓库根目录。按代码中的文件名保存从合法来源取得的附件：
+
+| 阶段 | `data/raw/` 中需要的文件 | 快速模式 | 完整模式 |
+| --- | --- | --- | --- |
+| Q1 | `attachment1.xlsx` | 单日运行 | 同单日运行 |
+| Q2 | `attachment1.xlsx`、`attachment2.xlsx` | 4 个代表日 | `--full`，2025-02-01 至 2025-12-31 |
+| Q3 | 前两项及 `attachment3.xlsx` | 4 个代表日 | `--full`，334 天 |
+| Q4-2 | `attachment2.xlsx`、`attachment4.xlsx` | 4 个代表日 | `--full`，另需 `result4-2_template.xlsx` |
+| Q4-3 | `attachment2.xlsx`、`attachment3.xlsx`、`attachment4.xlsx`、`result4-3_template.xlsx` | 4 个代表日 | `--full`，334 天 |
+
+Q1 输入是 144 行、10 分钟粒度的 Excel 首工作表，字段为 `时间`、`电价`、`小区负载`、`光伏发电预测功率`。Q2 至 Q4-3 的附件 2 需有 `小区负载` 和 `光伏发电实际功率` 两个工作表，各为 365 天 × 144 时段；Q3/Q4-3 的附件 3 包含 `日期`、`预报时刻` 和 `预报1小时` 至 `预报24小时` 字段；Q4 的附件 4 为 365 天 × 144 时段动态电价。模板来自附件 5，放入相应阶段目录并按上表重命名。Q4-2 仅在完整模式导出时读取模板；Q4-3 在快速与完整模式开始时均校验模板。
+
+例如，在仓库根目录准备好 Q1 的输入后，使用虚拟环境运行：
+
+```powershell
+cd .\code\Q1_确定性优化
+..\..\.venv\Scripts\python.exe main.py
+```
+
+运行其他阶段时切换到对应目录，并执行下表的主程序。无参数时运行四个代表日；添加 `--full` 计算 334 天，耗时明显更长。
 
 | 阶段 | 最终入口 |
 | --- | --- |
@@ -40,7 +99,29 @@ Q3、Q4-3 的成本包含调整后计划购电、计划偏差费用和 5 倍电�
 | Q4-2 | `code/Q4_2动态电价/main_q4_2_final_causal.py` |
 | Q4-3 | `code/Q4_3动态滚动优化/main_q4_3_final_causal.py` |
 
-每个阶段目录只保留该入口实际需要的 `src/` 模块和独立的 `requirements.txt`。使用 Python 3.12，在相应目录安装依赖、按 `src/config.py` 或 `src/q4_config.py` 所列文件名自行准备**有权使用**的数据并放入 `data/raw/`。Q4 的结果导出还需要对应空白模板。Q1 运行 `python main.py`；其他阶段可先运行入口的快速模式，`--full` 为全年计算，耗时较长。输出目录与本地数据由 `.gitignore` 排除。
+在对应阶段目录下，命令形式为 `..\..\.venv\Scripts\python.exe <主程序名> [--full]`；Q1 不使用 `--full`。各主程序会创建本阶段的 `outputs` 或 `outputs_*` 目录，并在其中保存 Excel 明细表和 JSON 汇总；Q4 的完整模式还会依据模板导出 `result4-2.xlsx` 或 `result4-3.xlsx`。
+
+## 输入输出示例
+
+Q1 的输入格式示意如下。示意值是**合成示例，不是题目附件数据**；实际文件必须包含 144 行，并使用代码要求的原始中文列名。
+
+| 时间 | 电价 | 小区负载 | 光伏发电预测功率 |
+| --- | ---: | ---: | ---: |
+| 00:00-00:10 | 0.50 | 3,500 | 0 |
+
+运行 `main.py` 后，Q1 会写出 `outputs/q1_dispatch_result.xlsx` 和 `outputs/q1_summary.json`。下列 JSON 是我对原研究数据完成单日运行得到的**汇总字段节选**，与上面的合成输入行没有对应关系：
+
+```json
+{
+  "total_grid_kwh": 59482.69899835391,
+  "total_cost_yuan": 35126.948589289634,
+  "soc_start_kwh": 6000.0,
+  "soc_end_kwh": 6000.0,
+  "simultaneous_charge_discharge_periods": 0
+}
+```
+
+Q2 快速模式会在 `outputs_q2_final_causal/` 下生成 `q2_final_causal_results_quick4.xlsx` 和 `q2_final_causal_summary_quick4.json`；完整模式把文件名后缀改为 `full`。Q3、Q4-2、Q4-3 使用相同的 `results_<模式>.xlsx` 与 `summary_<模式>.json` 命名方式，前缀分别是 `q3_final_causal`、`q4_2_final_causal`、`q4_3_final_causal`。
 
 仓库没有附带原始数据或模板，因此仅凭代码**不能复现上表的具体数值**。上表是完整运行结果的摘要。题面和附件可从[竞赛主办方的 2026 年赛题发布页](https://www.mcm.edu.cn/html_cn/node/27b6e148f8113f09b0269f64a02629fb.html)取得；我不在仓库中重新分发附件。
 
